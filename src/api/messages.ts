@@ -1,4 +1,4 @@
-import { request } from './client';
+import { request, requestBlob } from './client';
 import type { EntityMeta, Timestamp } from './entity';
 import { listFetcher } from './list';
 import { useResource } from './resource';
@@ -47,9 +47,14 @@ export type Message = EntityMeta & {
   origin?: string | null;
   // To before CC, each by name.
   receivers: MessageReceiver[];
+  // The attachments in the order sent; absent from an API older than them.
+  files?: MessageFile[];
   acknowledged: boolean;
   acknowledgements: { acknowledged: number; total: number };
 };
+
+// An attachment; its content at messageFilePath, served as content_type.
+export type MessageFile = { id: string; filename: string; content_type: string; size: number };
 
 export type MessageBox = 'inbox' | 'sent' | 'all';
 
@@ -78,9 +83,40 @@ export type MessageReceiverOption = { id: string; name: string; always_cc: boole
 export const messagesPath = '/api/v1/messages';
 export const messageReceiversPath = '/api/v1/message-receivers';
 export const messagePath = (id: string) => `${messagesPath}/${encodeURIComponent(id)}`;
+export const messageFilePath = (id: string, fileId: string) =>
+  `${messagePath(id)}/files/${encodeURIComponent(fileId)}`;
 
 export const maxMessageText = 4000;
 export const maxMessageOrigin = 200;
+
+// What the API accepts as attachments (domain.MessageAttachmentTypes): the
+// extension decides, and the content must be of its type.
+export const messageAttachmentTypes: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+};
+export const maxMessageFiles = 10;
+// For <input type="file" accept>.
+export const messageAttachmentAccept = Object.keys(messageAttachmentTypes).join(',');
+
+const extensionOf = (name: string) => {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot).toLowerCase() : '';
+};
+
+// Why the API would refuse the file as an attachment, or null.
+export function attachmentProblem(name: string): string | null {
+  return extensionOf(name) in messageAttachmentTypes
+    ? null
+    : `${name}: only images (PNG, JPEG, GIF, WebP) and PDFs can be attached.`;
+}
+
+export const isImageFile = (f: Pick<MessageFile, 'content_type'>) =>
+  f.content_type.startsWith('image/');
 
 // The problem type of a send refused because the chat is off in the scope.
 export const chatDisabledType = 'urn:universam:problem:chat-disabled';
@@ -116,9 +152,25 @@ export const useMessageReceivers = (enabled: boolean) =>
 
 const ifMatch = (m: Message) => ({ 'If-Match': `"${m.updated_at}"` });
 
+// JSON without files; with them multipart, the message part and one files
+// part each.
+function sendMessage(d: MessageDraft, files: readonly File[]) {
+  let body: string | FormData = JSON.stringify(d);
+  if (files.length > 0) {
+    body = new FormData();
+    body.append('message', JSON.stringify(d));
+    for (const f of files) body.append('files', f, f.name);
+  }
+  return request<Message>(messagesPath, { method: 'POST', body });
+}
+
 export const messagesApi = {
-  send: (d: MessageDraft) =>
-    request<Message>(messagesPath, { method: 'POST', body: JSON.stringify(d) }),
+  send: sendMessage,
+  // Online only like the messages, so not kept with requestCachedBlob.
+  file: (m: Pick<Message, 'id'>, f: MessageFile, signal?: AbortSignal) =>
+    requestBlob(messageFilePath(m.id, f.id), signal).then(
+      (b) => new Blob([b], { type: f.content_type }),
+    ),
   setTags: (m: Message, tags: string[]) =>
     request<Message>(messagePath(m.id), {
       method: 'PATCH',

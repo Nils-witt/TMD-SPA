@@ -13,7 +13,7 @@ import {
 import { usePriorityLabels } from '@/data/messages';
 import { useMessageCompose } from '@/pages/dashboard/widgets/Messages/messagesState';
 import { FormActionsMUI, FormErrorMUI, FormMUI, FormSectionMUI, MutedMUI } from '../shared/FormMUI';
-import { TagSelectMUI } from './MessagePartsMUI';
+import { AttachmentPicksMUI, TagSelectMUI } from './MessagePartsMUI';
 
 // To and CC as multi-selects that never offer a function in both; the
 // always-CC functions are fixed chips in CC.
@@ -119,6 +119,12 @@ function MessageComposeMUI({ onSent }: { onSent: (m: Message) => void }) {
           slotProps={{ htmlInput: { maxLength: maxMessageText } }}
           onChange={(e) => c.setText(e.target.value)}
         />
+        <AttachmentPicksMUI
+          files={c.files}
+          disabled={disabled}
+          onAdd={c.addFiles}
+          onRemove={c.removeFile}
+        />
         {c.tags.length > 0 && (
           <TagSelectMUI
             choices={c.tags}
@@ -132,7 +138,7 @@ function MessageComposeMUI({ onSent }: { onSent: (m: Message) => void }) {
         submitLabel="Send"
         busy={c.busy}
         canSubmit={c.canSend}
-        dirty={c.text !== '' || c.to.length > 0}
+        dirty={c.text !== '' || c.to.length > 0 || c.files.length > 0}
         onDiscard={c.reset}
       />
       <FormErrorMUI error={c.error ?? c.receivers.error} onClose={c.clearError} />

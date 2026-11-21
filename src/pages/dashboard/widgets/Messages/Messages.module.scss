@@ -64,3 +64,63 @@
   color: var(--warning);
   font-weight: 600;
 }
+
+// The attachments of a message.
+.files {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.fileOpen {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileIcon {
+  width: 3rem;
+  font-size: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.thumb {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.25rem;
+  object-fit: cover;
+  background: var(--chip);
+}
+
+.fileDownload {
+  display: inline-flex;
+  padding: 0.125rem;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}

@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ApiError } from '@/api/client';
 import {
+  attachmentProblem,
   awaitsAcknowledgement,
   chatDisabledType,
   composeOptions,
   type Message,
   type MessageBox,
+  type MessageFile,
   type MessagePriority,
   messagesApi,
+  maxMessageFiles,
   maxMessageOrigin,
   maxMessageText,
   useMessageReceivers,
@@ -94,6 +97,29 @@ export function useMessageActions(message: Message | undefined, onChanged: (m: M
   };
 }
 
+// The attachments after picking added: those the API would refuse are left
+// out and named in error, as are any beyond maxMessageFiles. A file picked
+// again (same name, size and time) is kept once.
+export function addAttachments(
+  current: readonly File[],
+  added: readonly File[],
+): { files: File[]; error: string | null } {
+  const same = (a: File, b: File) =>
+    a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+  const problems: string[] = [];
+  const files = [...current];
+  for (const f of added) {
+    const problem = attachmentProblem(f.name);
+    if (problem) problems.push(problem);
+    else if (!files.some((g) => same(f, g))) files.push(f);
+  }
+  if (files.length > maxMessageFiles) {
+    problems.push(`A message has at most ${maxMessageFiles} attachments.`);
+    files.length = maxMessageFiles;
+  }
+  return { files, error: problems.length > 0 ? problems.join(' ') : null };
+}
+
 export type ComposeState = ReturnType<typeof useMessageCompose>;
 
 // The compose form: To and CC from /api/v1/message-receivers, a function
@@ -112,6 +138,7 @@ export function useMessageCompose(onSent: (m: Message) => void) {
   // '' for none.
   const [wayId, setWayId] = useState('');
   const [origin, setOrigin] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,22 +160,32 @@ export function useMessageCompose(onSent: (m: Message) => void) {
     setTagIds([]);
     setWayId('');
     setOrigin('');
+    setFiles([]);
     setError(null);
+  };
+
+  const addFiles = (added: readonly File[]) => {
+    const next = addAttachments(files, added);
+    setFiles(next.files);
+    setError(next.error);
   };
 
   const send = async () => {
     if (!canSend) return;
     setBusy(true);
     try {
-      const m = await messagesApi.send({
-        to,
-        cc,
-        priority,
-        text: text.trim(),
-        tags: tagIds,
-        transmission_way: wayId || null,
-        origin: origin.trim() || null,
-      });
+      const m = await messagesApi.send(
+        {
+          to,
+          cc,
+          priority,
+          text: text.trim(),
+          tags: tagIds,
+          transmission_way: wayId || null,
+          origin: origin.trim() || null,
+        },
+        files,
+      );
       reset();
       onSent(m);
     } catch (err) {
@@ -180,6 +217,9 @@ export function useMessageCompose(onSent: (m: Message) => void) {
     setWayId,
     origin,
     setOrigin,
+    files,
+    addFiles,
+    removeFile: (f: File) => setFiles((fs) => fs.filter((g) => g !== f)),
     ways: ways.items.toSorted((a, b) => a.name.localeCompare(b.name)),
     blocker,
     canSend,
@@ -189,4 +229,63 @@ export function useMessageCompose(onSent: (m: Message) => void) {
     send,
     reset,
   };
+}
+
+// An attachment's content as an object URL (it needs the token, so no plain
+// link or <img src> can load it), revoked on unmount; null while loading or
+// when disabled, error if it failed.
+export function useMessageFileUrl(m: Pick<Message, 'id'>, f: MessageFile, enabled = true) {
+  const [state, setState] = useState<{ url: string | null; error: string | null }>({
+    url: null,
+    error: null,
+  });
+  // By value: a message's files never change, and a reload brings new objects.
+  const messageId = m.id;
+  const { id: fileId, filename, content_type, size } = f;
+  useEffect(() => {
+    if (!enabled) return;
+    const ctrl = new AbortController();
+    let url: string | null = null;
+    messagesApi
+      .file({ id: messageId }, { id: fileId, filename, content_type, size }, ctrl.signal)
+      .then((blob) => {
+        if (ctrl.signal.aborted) return;
+        url = URL.createObjectURL(blob);
+        setState({ url, error: null });
+      })
+      .catch((err: unknown) => {
+        if (!ctrl.signal.aborted) setState({ url: null, error: (err as Error).message });
+      });
+    return () => {
+      ctrl.abort();
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [messageId, fileId, filename, content_type, size, enabled]);
+  return state;
+}
+
+// Opens the attachment in a new tab (images and PDFs show in the browser).
+// The tab is opened before the content loads, so no popup blocker stops it;
+// where none opens, it is downloaded instead.
+export async function openMessageFile(m: Pick<Message, 'id'>, f: MessageFile) {
+  const tab = window.open('', '_blank');
+  if (!tab) return downloadMessageFile(m, f);
+  try {
+    const url = URL.createObjectURL(await messagesApi.file(m, f));
+    tab.location.href = url;
+    // Once the tab has loaded it.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err) {
+    tab.close();
+    throw err;
+  }
+}
+
+export async function downloadMessageFile(m: Pick<Message, 'id'>, f: MessageFile) {
+  const url = URL.createObjectURL(await messagesApi.file(m, f));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = f.filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

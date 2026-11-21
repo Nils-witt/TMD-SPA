@@ -27,6 +27,7 @@ import {
   WidgetForm,
 } from '@/components/form';
 import Spinner from '@/components/Spinner';
+import SymbolIcon from '@/components/symbols/SymbolIcon';
 import { usePriorityLabels } from '@/data/messages';
 import { formatTime } from '../shared/logbookEntries';
 import WidgetActionBar, { WidgetAction, WidgetActionSelect } from '../shared/WidgetActionBar';
@@ -34,7 +35,14 @@ import { EmptyState } from '../shared/WidgetStates';
 import tableStyles from '../shared/CatalogManager.module.scss';
 import type { WidgetProps } from '../widgetOptions';
 import { useWidgetState } from '../widgetState';
-import { FunctionPicks, PriorityChip, TagChips, TagPicks } from './MessageParts';
+import {
+  AttachmentList,
+  AttachmentPicks,
+  FunctionPicks,
+  PriorityChip,
+  TagChips,
+  TagPicks,
+} from './MessageParts';
 import {
   boxLabels,
   type ComposeState,
@@ -204,6 +212,12 @@ function MessageRow({
       </td>
       <td className={tableStyles.description}>
         <span title={m.text}>{m.text}</span>
+        {(m.files?.length ?? 0) > 0 && (
+          <span className="muted" title={`${m.files?.length} attachments`}>
+            {' '}
+            <SymbolIcon name="attach_file" />
+          </span>
+        )}
         <TagChips tags={tags} />
       </td>
       <td className={tableStyles.meta}>{formatTime(m.created_at)}</td>
@@ -235,6 +249,7 @@ function MessageDetail({
   onChanged: () => void;
 }) {
   const cache = useResourceCache();
+  const [fileError, setFileError] = useState<string | null>(null);
   const message = useMessage(id);
   const m = message.data;
   const actions = useMessageActions(m, (next) => {
@@ -275,6 +290,13 @@ function MessageDetail({
         </SectionText>
         <p className={styles.text}>{m.text}</p>
       </div>
+      {(m.files?.length ?? 0) > 0 && (
+        <div>
+          <SectionHeading>Attachments</SectionHeading>
+          <AttachmentList message={m} onError={setFileError} />
+          <FormError error={fileError} onClose={() => setFileError(null)} />
+        </div>
+      )}
       <div>
         <SectionHeading>Receivers</SectionHeading>
         <table className={tableStyles.table}>
@@ -458,6 +480,15 @@ function ComposeForm({ c }: { c: ComposeState }) {
             onChange={(e) => c.setText(e.target.value)}
           />
         </FieldRow>
+        <FieldRow id={`${id}-files`} label="Attachments">
+          <AttachmentPicks
+            id={`${id}-files`}
+            files={c.files}
+            disabled={disabled}
+            onAdd={c.addFiles}
+            onRemove={c.removeFile}
+          />
+        </FieldRow>
         {c.tags.length > 0 && (
           <FieldRow id={`${id}-tags`} label="Tags">
             <TagPicks
@@ -473,7 +504,7 @@ function ComposeForm({ c }: { c: ComposeState }) {
         submitLabel="Send"
         busy={c.busy}
         canSubmit={c.canSend}
-        dirty={c.text !== '' || c.to.length > 0}
+        dirty={c.text !== '' || c.to.length > 0 || c.files.length > 0}
         onDiscard={c.reset}
       />
       <FormError error={c.error ?? c.receivers.error} onClose={c.clearError} />

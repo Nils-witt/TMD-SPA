@@ -1,8 +1,19 @@
-import type { MessageReceiverOption } from '@/api/messages';
+import { useRef } from 'react';
+import {
+  isImageFile,
+  type Message,
+  type MessageFile,
+  type MessageReceiverOption,
+  maxMessageFiles,
+  messageAttachmentAccept,
+} from '@/api/messages';
 import { type MessageTag, tagTextColor } from '@/api/messageTags';
 import Chip, { type ChipTone } from '@/components/Chip';
+import SymbolIcon from '@/components/symbols/SymbolIcon';
 import { usePriorityLabel } from '@/data/messages';
+import { formatSize } from '../shared/logbookEntries';
 import MessageTagChip from '../shared/MessageTagChip';
+import { downloadMessageFile, openMessageFile, useMessageFileUrl } from './messagesState';
 import styles from './Messages.module.scss';
 
 const priorityTones: Record<number, ChipTone> = { 1: 'red', 2: 'yellow' };
@@ -140,6 +151,118 @@ export function TagPicks({
           ))}
         </select>
       )}
+    </span>
+  );
+}
+
+// The attachments of a message, images with a thumbnail; a click opens one
+// in a new tab.
+export function AttachmentList({
+  message,
+  onError,
+}: {
+  message: Message;
+  onError: (message: string) => void;
+}) {
+  const files = message.files ?? [];
+  if (files.length === 0) return null;
+  const run = (fn: () => Promise<void>) =>
+    fn().catch((err: unknown) => onError((err as Error).message));
+  return (
+    <ul className={styles.files}>
+      {files.map((f) => (
+        <li key={f.id} className={styles.file}>
+          <button
+            type="button"
+            className={styles.fileOpen}
+            title={`Open ${f.filename}`}
+            onClick={() => run(() => openMessageFile(message, f))}
+          >
+            {isImageFile(f) ? (
+              <Thumbnail message={message} file={f} />
+            ) : (
+              <SymbolIcon name="picture_as_pdf" className={styles.fileIcon} />
+            )}
+            <span className={styles.fileName}>{f.filename}</span>
+          </button>
+          <span className="muted">{formatSize(f.size)}</span>
+          <button
+            type="button"
+            className={styles.fileDownload}
+            aria-label={`Download ${f.filename}`}
+            title="Download"
+            onClick={() => run(() => downloadMessageFile(message, f))}
+          >
+            <SymbolIcon name="download" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Thumbnail({ message, file }: { message: Message; file: MessageFile }) {
+  const { url } = useMessageFileUrl(message, file);
+  return url ? (
+    <img className={styles.thumb} src={url} alt="" />
+  ) : (
+    <SymbolIcon name="image" className={styles.fileIcon} />
+  );
+}
+
+// The files picked to send, each removable, then a button picking more
+// (images and PDFs only, which the picker offers).
+export function AttachmentPicks({
+  id,
+  files,
+  disabled,
+  onAdd,
+  onRemove,
+}: {
+  // The Attach button's, for the field's label.
+  id?: string;
+  files: readonly File[];
+  disabled: boolean;
+  onAdd: (files: File[]) => void;
+  onRemove: (file: File) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <span className={styles.chips}>
+      {files.map((f, i) => (
+        <span key={`${i}-${f.name}`} className={styles.pick} title={formatSize(f.size)}>
+          {f.name}
+          <button
+            type="button"
+            aria-label={`Remove ${f.name}`}
+            disabled={disabled}
+            onClick={() => onRemove(f)}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        ref={input}
+        type="file"
+        multiple
+        hidden
+        accept={messageAttachmentAccept}
+        onChange={(e) => {
+          onAdd([...(e.target.files ?? [])]);
+          // So picking the same file again fires a change.
+          e.target.value = '';
+        }}
+      />
+      <button
+        id={id}
+        type="button"
+        disabled={disabled || files.length >= maxMessageFiles}
+        title="Images (PNG, JPEG, GIF, WebP) and PDFs"
+        onClick={() => input.current?.click()}
+      >
+        Attach…
+      </button>
     </span>
   );
 }

@@ -10,7 +10,7 @@ import { activeTags, type MessageTag } from '@/api/messageTags';
 import { useMessageActions } from '@/pages/dashboard/widgets/Messages/messagesState';
 import { formatTime } from '@/pages/dashboard/widgets/shared/logbookEntries';
 import { FormActionsMUI, FormErrorMUI, FormMUI, FormSectionMUI, MutedMUI } from '../shared/FormMUI';
-import { PriorityChipMUI, TagSelectMUI } from './MessagePartsMUI';
+import { AttachmentListMUI, PriorityChipMUI, TagSelectMUI } from './MessagePartsMUI';
 
 // One message: its text, each receiver with who acknowledged when,
 // Acknowledge for a pending To receiver, and the tags (the only change).
@@ -24,6 +24,7 @@ function MessageDetailMUI({
   onChanged: (m: Message) => void;
 }) {
   const actions = useMessageActions(m, onChanged);
+  const [fileError, setFileError] = useState<string | null>(null);
   return (
     <Stack useFlexGap sx={{ gap: 2 }}>
       <Stack direction="row" useFlexGap sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -36,6 +37,15 @@ function MessageDetailMUI({
         </Typography>
       </Stack>
       <Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{m.text}</Typography>
+      {(m.files?.length ?? 0) > 0 && (
+        <div>
+          <Typography variant="overline" color="text.secondary">
+            Attachments
+          </Typography>
+          <AttachmentListMUI message={m} onError={setFileError} />
+          <FormErrorMUI error={fileError} onClose={() => setFileError(null)} />
+        </div>
+      )}
       {actions.canAcknowledge && (
         <Button variant="contained" disabled={actions.busy} onClick={actions.acknowledge}>
           Acknowledge
