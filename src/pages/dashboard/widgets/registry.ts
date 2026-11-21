@@ -36,6 +36,7 @@ const MapWidget = lazy(() => import('./Map/Map.tsx'));
 const MapStylesWidget = lazy(() => import('./MapStyles/MapStyles.tsx'));
 const MapAdminWidget = lazy(() => import('./MapAdmin/MapAdmin.tsx'));
 const MessageSettingsWidget = lazy(() => import('./MessageSettings/MessageSettings.tsx'));
+const ServiceUrlsWidget = lazy(() => import('./ServiceUrls/ServiceUrls.tsx'));
 const MessageTagsWidget = lazy(() => import('./MessageTags/MessageTags.tsx'));
 const TransmissionWaysWidget = lazy(() => import('./TransmissionWays/TransmissionWays.tsx'));
 const LayoutsWidget = lazy(() => import('./Layouts/Layouts.tsx'));
@@ -872,6 +873,15 @@ const MapAdmin: Widget = {
   Component: MapAdminWidget,
 };
 
+// Where the browsers find address-serv and the tile server (admin group).
+const ServiceUrls: Widget = {
+  ...adminWidget,
+  id: 'ServiceUrls',
+  name: 'Service URLs',
+  description: 'Sets the URLs of the address directory and the tile server.',
+  Component: ServiceUrlsWidget,
+};
+
 // The priority labels and the Default scope's chat flag.
 const MessageSettings: Widget = {
   ...adminWidget,
@@ -1018,6 +1028,7 @@ export const widgets: Record<string, Widget> = Object.fromEntries(
     MapStyles,
     MapAdmin,
     MessageSettings,
+    ServiceUrls,
     MessageTags,
     TransmissionWays,
     ExportTemplates,

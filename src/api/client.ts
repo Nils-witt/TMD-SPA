@@ -21,14 +21,70 @@ export function setApiTarget(t: ApiTarget) {
 
 export const apiTarget = () => target;
 
-// address-serv, which the SPA calls itself for address suggestions: with the
-// user's token (oidc), or through the mTLS proxy with the client certificate
-// (mtls). Empty: no suggestions.
-const addressBaseUrls: Record<ApiTarget, string> = { oidc: '', mtls: '' };
+// The services the SPA calls itself: address-serv for address suggestions,
+// and the tile server (tileserve-go), whose maps the map widgets draw as
+// overlays. Each with the user's token (oidc), or through the mTLS proxy with
+// the client certificate (mtls). Empty: no suggestions, no overlays.
+export type Service = 'address' | 'tiles';
+type ServiceUrls = Record<ApiTarget, string>;
 
-// The tile server (tileserve-go), whose maps the map widgets draw as
-// overlays: the SPA loads them itself, like address-serv. Empty: no overlays.
-const tilesBaseUrls: Record<ApiTarget, string> = { oidc: '', mtls: '' };
+const noUrls: ServiceUrls = { oidc: '', mtls: '' };
+
+// An mTLS URL left empty is the OIDC one.
+const serviceUrls = (oidc?: string | null, mtls?: string | null): ServiceUrls => {
+  const o = oidc ? trimSlashes(oidc.trim()) : '';
+  return { oidc: o, mtls: mtls ? trimSlashes(mtls.trim()) : o };
+};
+
+// The admins set the URLs in the API (/api/v1/service-urls, applied by
+// applyServiceUrls once signed in); config.json's are the fallback for a
+// service the API leaves empty, or an API without them.
+const configUrls: Record<Service, ServiceUrls> = { address: noUrls, tiles: noUrls };
+const apiUrls: Record<Service, ServiceUrls> = { address: noUrls, tiles: noUrls };
+
+const effectiveUrls = (s: Service): ServiceUrls =>
+  apiUrls[s].oidc !== '' || apiUrls[s].mtls !== '' ? apiUrls[s] : configUrls[s];
+
+// Notified when a service URL changes; serviceUrlsVersion counts the changes,
+// for useSyncExternalStore.
+const serviceUrlListeners = new Set<() => void>();
+let urlsVersion = 0;
+
+export function subscribeServiceUrls(listener: () => void): () => void {
+  serviceUrlListeners.add(listener);
+  return () => serviceUrlListeners.delete(listener);
+}
+
+export const serviceUrlsVersion = () => urlsVersion;
+
+function setServiceUrls(store: Record<Service, ServiceUrls>, s: Service, next: ServiceUrls) {
+  const before = effectiveUrls(s);
+  store[s] = next;
+  const after = effectiveUrls(s);
+  if (before.oidc !== after.oidc || before.mtls !== after.mtls) {
+    urlsVersion++;
+    serviceUrlListeners.forEach((l) => l());
+  }
+}
+
+// The URLs of GET /api/v1/service-urls; undefined (not loaded, an older API)
+// leaves config.json's.
+export type ServiceUrlSettings = {
+  address_url: string;
+  mtls_address_url: string;
+  tiles_url: string;
+  mtls_tiles_url: string;
+};
+
+export function applyServiceUrls(u: ServiceUrlSettings | undefined) {
+  setServiceUrls(apiUrls, 'address', u ? serviceUrls(u.address_url, u.mtls_address_url) : noUrls);
+  setServiceUrls(apiUrls, 'tiles', u ? serviceUrls(u.tiles_url, u.mtls_tiles_url) : noUrls);
+}
+
+const serviceUrl = (s: Service, path: string, t: ApiTarget): string | null => {
+  const base = effectiveUrls(s)[t];
+  return base === '' ? null : `${base}${path}`;
+};
 
 type RuntimeConfig = {
   // Origin of universalGoApi for OIDC login. Empty or missing: keep
@@ -72,31 +128,22 @@ export async function loadConfig(): Promise<void> {
 
 export const apiUrl = (path: string, t: ApiTarget = target) => `${baseUrls[t]}${path}`;
 
-// Exported for tests; loadConfig sets them from config.json.
+// config.json's URLs. Exported for tests; loadConfig sets them.
 export function setAddressBaseUrls(oidc?: string, mtls?: string) {
-  addressBaseUrls.oidc = oidc ? trimSlashes(oidc) : '';
-  addressBaseUrls.mtls = mtls ? trimSlashes(mtls) : addressBaseUrls.oidc;
+  setServiceUrls(configUrls, 'address', serviceUrls(oidc, mtls));
+}
+
+export function setTilesBaseUrls(oidc?: string, mtls?: string) {
+  setServiceUrls(configUrls, 'tiles', serviceUrls(oidc, mtls));
 }
 
 // The address-serv URL of path for the session's target, null when none is
 // configured.
-export function addressUrl(path: string, t: ApiTarget = target): string | null {
-  const base = addressBaseUrls[t];
-  return base === '' ? null : `${base}${path}`;
-}
-
-// Exported for tests; loadConfig sets them from config.json.
-export function setTilesBaseUrls(oidc?: string, mtls?: string) {
-  tilesBaseUrls.oidc = oidc ? trimSlashes(oidc) : '';
-  tilesBaseUrls.mtls = mtls ? trimSlashes(mtls) : tilesBaseUrls.oidc;
-}
+export const addressUrl = (path: string, t: ApiTarget = target) => serviceUrl('address', path, t);
 
 // The tile server URL of path for the session's target, null when none is
 // configured.
-export function tilesUrl(path: string, t: ApiTarget = target): string | null {
-  const base = tilesBaseUrls[t];
-  return base === '' ? null : `${base}${path}`;
-}
+export const tilesUrl = (path: string, t: ApiTarget = target) => serviceUrl('tiles', path, t);
 
 // The API URL is empty when the SPA and the API share an origin.
 export function websocketUrl(path: string): string {

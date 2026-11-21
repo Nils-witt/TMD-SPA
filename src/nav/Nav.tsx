@@ -121,6 +121,7 @@ function Nav() {
                   <NavMenuItem label="Map Defaults" widget="MapAdmin" />
                   <NavMenuItem label="Map Styles" widget="MapStyles" />
                   <NavMenuItem label="Message Settings" widget="MessageSettings" />
+                  <NavMenuItem label="Service URLs" widget="ServiceUrls" />
                   <NavMenuItem label="Message Tags" widget="MessageTags" />
                   <NavMenuItem label="Transmission Ways" widget="TransmissionWays" />
                   <NavMenuItem label="Export Templates" widget="ExportTemplates" />

@@ -5,6 +5,7 @@ import { apiTarget, freshAuthHeaders, request, tilesUrl } from './client';
 import type { EntityMeta } from './entity';
 import { listFetcher } from './list';
 import { useResource } from './resource';
+import { useServiceUrlsVersion } from './serviceUrls';
 
 // A basemap: url is a MapLibre style JSON, an absolute https URL the browser
 // loads itself, without the token. Names are unique; at most one style is the
@@ -126,8 +127,9 @@ export function toOverlays(maps: readonly TileMap[]): Overlay[] {
     .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 }
 
-// The resource cache's key; the fetcher asks the tile server.
-const overlaysKey = 'tiles:/maps';
+// The resource cache's key, per tile server, so another URL loads anew; the
+// fetcher asks the tile server.
+const overlaysKey = () => `tiles:${tilesUrl('') ?? ''}/maps`;
 
 const fetchOverlays = async (): Promise<Overlays> =>
   tilesUrl('') === null
@@ -136,7 +138,8 @@ const fetchOverlays = async (): Promise<Overlays> =>
 
 // Read from the tile server once per page load.
 export function useOverlays() {
-  const { data, error } = useResource<Overlays>(overlaysKey, fetchOverlays);
+  useServiceUrlsVersion();
+  const { data, error } = useResource<Overlays>(overlaysKey(), fetchOverlays);
   return { overlays: data, error };
 }
 

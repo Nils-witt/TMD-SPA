@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { addressUrl, apiTarget, freshAuthHeaders } from './client';
+import { addressUrl, apiTarget, freshAuthHeaders, subscribeServiceUrls } from './client';
 import type { Coordinates, MissionFields } from './missions';
 
 // Suggestions come from address-serv, which the browser calls itself (its
@@ -72,6 +72,11 @@ const addressTimeout = 10_000;
 // addresses) or 404 (no /api/suggest), so no more lookups are tried until the
 // page reloads.
 let available = true;
+
+// Another address directory may answer.
+subscribeServiceUrls(() => {
+  available = true;
+});
 
 export class AddressError extends Error {
   readonly status: number;

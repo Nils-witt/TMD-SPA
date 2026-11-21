@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import EventsProvider from '@/api/EventsProvider';
 import ResourceProvider from '@/api/ResourceProvider';
+import { ServiceUrlsSync } from '@/api/serviceUrls';
 import { useAllowedViews, useSession } from '@/app/session';
 import DataProvider from '@/data/DataProvider';
 import Spinner from '@/components/Spinner';
@@ -43,6 +44,7 @@ function ResponsiveShell() {
       <ThemeScope>
         <ResourceProvider>
           <EventsProvider mode={mode}>
+            <ServiceUrlsSync />
             <DataProvider>
               <WidgetSheets>
                 <Routes>

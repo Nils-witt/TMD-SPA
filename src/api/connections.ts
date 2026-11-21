@@ -1,8 +1,9 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import { addressUrl, tilesUrl } from './client';
+import { addressUrl, subscribeServiceUrls, tilesUrl } from './client';
 import { probeAddressDirectory } from './address';
 import { probeTileServer } from './maps';
 import { useResource } from './resource';
+import { useServiceUrlsVersion } from './serviceUrls';
 
 // GET /api/v1/connections: the API instance's connections to the external
 // services it is configured with. The units server's is its live event stream
@@ -92,6 +93,15 @@ function createProbe(service: string, check: () => Promise<ProbeResult>) {
     },
     state: () => state,
     probe,
+    // Another URL: its state starts over, checked at once if shown.
+    reset() {
+      state =
+        listeners.size > 0
+          ? { service, state: 'pending', since: '', error: null, version: null }
+          : null;
+      listeners.forEach((l) => l());
+      if (listeners.size > 0) void probe();
+    },
   };
 }
 
@@ -102,10 +112,16 @@ const addressProbe = createProbe(addressService, async () => ({
 
 const tilesProbe = createProbe(tilesService, () => probeTileServer());
 
+subscribeServiceUrls(() => {
+  addressProbe.reset();
+  tilesProbe.reset();
+});
+
 const noSubscribe = () => () => undefined;
 const noState = () => null;
 
 function useProbe(probe: ReturnType<typeof createProbe>, configured: boolean) {
+  useServiceUrlsVersion();
   return useSyncExternalStore(
     configured ? probe.subscribe : noSubscribe,
     configured ? probe.state : noState,

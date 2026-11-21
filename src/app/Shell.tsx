@@ -1,5 +1,6 @@
 import EventsProvider from '@/api/EventsProvider';
 import ResourceProvider from '@/api/ResourceProvider';
+import { ServiceUrlsSync } from '@/api/serviceUrls';
 import { useSession } from '@/app/session';
 import OfflineBanner from '@/components/OfflineBanner';
 import WidgetWindows from '@/components/widgetWindow/WidgetWindows';
@@ -15,6 +16,7 @@ function Shell() {
   return (
     <ResourceProvider>
       <EventsProvider mode={mode}>
+        <ServiceUrlsSync />
         <DataProvider>
           <LayoutProvider>
             <DashboardProvider>

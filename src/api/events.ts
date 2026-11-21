@@ -55,6 +55,7 @@ const typePaths: Record<string, string[]> = {
   transmission_ways: ['/api/v1/transmission-ways'],
   map_styles: ['/api/v1/map-styles'],
   map_settings: ['/api/v1/map-settings'],
+  service_urls: ['/api/v1/service-urls'],
   dashboard_layouts: ['/api/v1/layouts'],
   user_preferences: ['/api/v1/me/preferences'],
   export_templates: ['/api/v1/export-templates'],
