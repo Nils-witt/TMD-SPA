@@ -1,14 +1,16 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import { addressUrl } from './client';
+import { addressUrl, tilesUrl } from './client';
 import { probeAddressDirectory } from './address';
+import { probeTileServer } from './maps';
 import { useResource } from './resource';
 
 // GET /api/v1/connections: the API instance's connections to the external
 // services it is configured with. The units server's is its live event stream
 // (reloaded on the event type `units`), the others are probed by the API every
 // 30 s (event type `connections`), so neither is polled here. The address
-// directory is the exception: the browser calls it itself, so it probes it
-// itself (useAddressConnection) and useConnections adds it to the list.
+// directory and the tile server are the exceptions: the browser calls them
+// itself, so it probes them itself (useAddressConnection, useTilesConnection)
+// and useConnections adds them to the list.
 export const connectionsPath = '/api/v1/connections';
 
 // pending: not checked yet since the API started.
@@ -31,12 +33,17 @@ export type ConnectionList = { connections: ServiceConnection[] };
 // The service name of the address directory, as the API once reported it.
 export const addressService = 'addresses';
 
-// How often the shown address directory connection is checked.
-const addressProbeInterval = 30_000;
+// The service name of the tile server, as the API once reported it.
+export const tilesService = 'tiles';
 
-// The browser's connection to address-serv, probed while any component shows
-// it: one probe for all of them.
-const addressProbe = (() => {
+// How often a shown browser-side connection is checked.
+const probeInterval = 30_000;
+
+type ProbeResult = { error: string | null; version: string | null };
+
+// The browser's own connection to service, probed with check while any
+// component shows it: one probe for all of them.
+function createProbe(service: string, check: () => Promise<ProbeResult>) {
   let state: ServiceConnection | null = null;
   const listeners = new Set<() => void>();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -48,17 +55,18 @@ const addressProbe = (() => {
   };
 
   const probe = () => {
-    running ??= probeAddressDirectory()
-      .then((error) => {
+    running ??= check()
+      .then(({ error, version }) => {
         const next = error === null ? 'connected' : 'disconnected';
         // since is when the state began, so a repeated one keeps it.
         const keep = state !== null && state.state === next;
         set({
-          service: addressService,
+          service,
           state: next,
           since: keep && state ? state.since : new Date().toISOString(),
           error,
-          version: null,
+          // Kept while it is down, as the API does.
+          version: version ?? state?.version ?? null,
         });
       })
       .finally(() => {
@@ -72,16 +80,10 @@ const addressProbe = (() => {
       listeners.add(listener);
       if (listeners.size === 1) {
         if (state === null) {
-          state = {
-            service: addressService,
-            state: 'pending',
-            since: '',
-            error: null,
-            version: null,
-          };
+          state = { service, state: 'pending', since: '', error: null, version: null };
         }
         void probe();
-        timer = setInterval(() => void probe(), addressProbeInterval);
+        timer = setInterval(() => void probe(), probeInterval);
       }
       return () => {
         listeners.delete(listener);
@@ -91,39 +93,61 @@ const addressProbe = (() => {
     state: () => state,
     probe,
   };
-})();
+}
+
+const addressProbe = createProbe(addressService, async () => ({
+  error: await probeAddressDirectory(),
+  version: null,
+}));
+
+const tilesProbe = createProbe(tilesService, () => probeTileServer());
 
 const noSubscribe = () => () => undefined;
 const noState = () => null;
 
-// The browser's connection to address-serv; null without one configured.
-export function useAddressConnection(): ServiceConnection | null {
-  const configured = addressUrl('') !== null;
+function useProbe(probe: ReturnType<typeof createProbe>, configured: boolean) {
   return useSyncExternalStore(
-    configured ? addressProbe.subscribe : noSubscribe,
-    configured ? addressProbe.state : noState,
+    configured ? probe.subscribe : noSubscribe,
+    configured ? probe.state : noState,
   );
 }
 
-// The API's connections with the browser's own to the address directory in
-// place of the one an older API still reports.
+// The browser's connection to address-serv; null without one configured.
+export function useAddressConnection(): ServiceConnection | null {
+  return useProbe(addressProbe, addressUrl('') !== null);
+}
+
+// The browser's connection to the tile server; null without one configured.
+export function useTilesConnection(): ServiceConnection | null {
+  return useProbe(tilesProbe, tilesUrl('') !== null);
+}
+
+// The API's connections with the browser's own (address directory, tile
+// server) in place of the ones an older API still reports.
 export function mergeConnections(
   api: ServiceConnection[] | undefined,
-  address: ServiceConnection | null,
+  ...own: (ServiceConnection | null)[]
 ): ServiceConnection[] | undefined {
-  if (address === null) return api;
-  return [...(api ?? []).filter((c) => c.service !== addressService), address];
+  const mine = own.filter((c): c is ServiceConnection => c !== null);
+  if (mine.length === 0) return api;
+  const services = new Set(mine.map((c) => c.service));
+  return [...(api ?? []).filter((c) => !services.has(c.service)), ...mine];
 }
 
 // Not kept offline: a stored copy would show states that no longer hold.
 export function useConnections() {
   const api = useResource<ConnectionList>(connectionsPath, undefined, { persist: false });
   const address = useAddressConnection();
+  const tiles = useTilesConnection();
   const { reload: reloadApi } = api;
   const reload = useCallback(async () => {
-    await Promise.all([reloadApi(), addressUrl('') !== null ? addressProbe.probe() : null]);
+    await Promise.all([
+      reloadApi(),
+      addressUrl('') !== null ? addressProbe.probe() : null,
+      tilesUrl('') !== null ? tilesProbe.probe() : null,
+    ]);
   }, [reloadApi]);
-  const connections = mergeConnections(api.data?.connections, address);
+  const connections = mergeConnections(api.data?.connections, address, tiles);
   return { ...api, data: connections && { connections }, reload };
 }
 

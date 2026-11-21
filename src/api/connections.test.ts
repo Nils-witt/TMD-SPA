@@ -53,6 +53,15 @@ describe('mergeConnections', () => {
     expect(mergeConnections(undefined, own)).toEqual([own]);
   });
 
+  it("replaces the API's tile server connection by the browser's too", () => {
+    const address = conn('addresses', 'connected');
+    const tiles = conn('tiles', 'disconnected');
+    expect(
+      mergeConnections([conn('units', 'connected'), conn('tiles', 'connected')], address, tiles),
+    ).toEqual([conn('units', 'connected'), address, tiles]);
+    expect(mergeConnections(undefined, null, tiles)).toEqual([tiles]);
+  });
+
   it("keeps the API's list without an address directory", () => {
     const api = [conn('units', 'connected')];
     expect(mergeConnections(api, null)).toBe(api);

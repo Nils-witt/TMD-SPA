@@ -8,8 +8,8 @@ import { defaultOverlayState } from '@/pages/dashboard/widgets/Map/overlayState'
 import { setOverlay, useOverlaySettings } from '../overlaySettings';
 import styles from './SettingsPage.module.scss';
 
-// What the Map tab draws over its base map, from the API's tile server. Hidden
-// when the API has none.
+// What the Map tab draws over its base map, from the tile server. Hidden
+// without one configured (tilesBaseUrl).
 function OverlaySettings() {
   const { overlays, error } = useOverlays();
   const state = useOverlaySettings();

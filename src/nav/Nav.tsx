@@ -29,7 +29,6 @@ const adminMenuPermissions = [
   'scopes.manage',
   'uhs.manage',
   'maps.manage',
-  'overlays.manage',
   'export-templates.manage',
   'workflows.view',
   'backups.view',
@@ -121,7 +120,6 @@ function Nav() {
                   <NavMenuItem label="UHS" widget="Uhs" />
                   <NavMenuItem label="Map Defaults" widget="MapAdmin" />
                   <NavMenuItem label="Map Styles" widget="MapStyles" />
-                  <NavMenuItem label="Overlay Access" widget="OverlayAccess" />
                   <NavMenuItem label="Message Settings" widget="MessageSettings" />
                   <NavMenuItem label="Message Tags" widget="MessageTags" />
                   <NavMenuItem label="Transmission Ways" widget="TransmissionWays" />

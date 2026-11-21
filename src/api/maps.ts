@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { OverlayState } from '@/pages/dashboard/widgets/Map/overlayState';
 import { useCollection } from './collection';
-import { request } from './client';
+import { apiTarget, freshAuthHeaders, request, tilesUrl } from './client';
 import type { EntityMeta } from './entity';
 import { listFetcher } from './list';
 import { useResource } from './resource';
@@ -48,8 +48,9 @@ export const mapStylesApi = {
     request<void>(`${mapStylesPath}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
-// A map of the API's tile server, drawn over the basemap. The API proxies it,
-// so the tile server's token stays there.
+// A map of the tile server (tileserve-go), drawn over the basemap. The browser
+// loads the list, bounds and tiles from the tile server itself (tilesBaseUrl
+// and mtlsTilesBaseUrl of config.json), which decides who sees which map.
 export type Overlay = { id: string; name: string; description: string };
 
 // enabled is false, and the list empty, without a tile server.
@@ -64,52 +65,135 @@ export type OverlayBounds = {
   max_zoom: number;
 };
 
-const overlaysPath = '/api/v1/overlays';
+// The version shown of each map: its current one.
+const tileVersion = 'current';
+
+// A JSON answer the tile server needs longer for is of no use to the map.
+const tilesTimeout = 10_000;
+
+export class TileServerError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'TileServerError';
+    this.status = status;
+  }
+}
+
+// With OIDC the tile server gets the user's token and no cookies; behind the
+// mTLS proxy the client certificate, which a browser only presents
+// cross-origin with credentials.
+export async function tilesAuth(): Promise<Pick<RequestInit, 'credentials' | 'headers'>> {
+  return apiTarget() === 'mtls'
+    ? { credentials: 'include', headers: {} }
+    : { credentials: 'omit', headers: await freshAuthHeaders() };
+}
+
+// A GET of the tile server. Throws TileServerError (status 0 without a tile
+// server), or what fetch throws.
+async function tilesFetch(path: string, signal?: AbortSignal): Promise<Response> {
+  const url = tilesUrl(path);
+  if (url === null) throw new TileServerError(0, 'no tile server configured');
+  const timeout = AbortSignal.timeout(tilesTimeout);
+  const { credentials, headers } = await tilesAuth();
+  const res = await fetch(url, {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    credentials,
+    headers: { Accept: 'application/json', ...headers },
+  });
+  if (!res.ok) {
+    await res.body?.cancel();
+    throw new TileServerError(
+      res.status,
+      res.status === 404 ? 'overlay not found' : `the tile server answered ${res.status}`,
+    );
+  }
+  return res;
+}
+
+const tilesJson = async <T>(path: string) => (await (await tilesFetch(path)).json()) as T;
+
+// A map as the tile server lists it.
+type TileMap = { uuid: string; name: string; description?: string; currentVersion?: string };
+
+// Maps without a current version have no tiles to show and are left out; the
+// rest sorted by name, ignoring case.
+export function toOverlays(maps: readonly TileMap[]): Overlay[] {
+  return maps
+    .filter((m) => m.currentVersion)
+    .map((m) => ({ id: m.uuid, name: m.name, description: m.description ?? '' }))
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+}
+
+// The resource cache's key; the fetcher asks the tile server.
+const overlaysKey = 'tiles:/maps';
+
+const fetchOverlays = async (): Promise<Overlays> =>
+  tilesUrl('') === null
+    ? { enabled: false, overlays: [] }
+    : { enabled: true, overlays: toOverlays(await tilesJson<TileMap[]>('/maps')) };
 
 // Read from the tile server once per page load.
 export function useOverlays() {
-  const { data, error } = useResource<Overlays>(overlaysPath);
+  const { data, error } = useResource<Overlays>(overlaysKey, fetchOverlays);
   return { overlays: data, error };
 }
 
-// MapLibre requests it itself; Map's transformRequest adds the token.
-export const overlayTilePath = (id: string) =>
-  `${overlaysPath}/${encodeURIComponent(id)}/tiles/{z}/{x}/{y}`;
+const mapPath = (id: string) => `/maps/${encodeURIComponent(id)}/version/${tileVersion}`;
 
-export const fetchOverlayBounds = (id: string) =>
-  request<OverlayBounds>(`${overlaysPath}/${encodeURIComponent(id)}/bounds`);
+// MapLibre requests the tiles itself; Map's transformRequest adds the
+// credentials. null without a tile server.
+export const overlayTileUrl = (id: string) => tilesUrl(`${mapPath(id)}/{z}/{x}/{y}.png`);
 
-// Who may see an overlay besides admins, granted by them. An overlay without
-// an entry is seen by admins only; with one, also by everyone, or by the
-// users (user IDs) and members of the groups (names as in whoami's groups)
-// listed. The API leaves overlays the caller may not see out of useOverlays()
-// and answers their bounds and tiles 404.
-export type OverlayAccess = EntityMeta & {
-  overlay_id: string;
-  everyone: boolean;
-  users: string[];
-  groups: string[];
+// Whether MapLibre's request for url goes to the tile server.
+export function isTileServerUrl(url: string): boolean {
+  const base = tilesUrl('/');
+  return base !== null && url.startsWith(new URL(base, globalThis.location?.href).href);
+}
+
+type TileBounds = {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+  minZoom: number;
+  maxZoom: number;
 };
 
-export const overlayAccessPath = '/api/v1/overlay-access';
-const overlayAccessEntryPath = (overlayId: string) =>
-  `${overlayAccessPath}/${encodeURIComponent(overlayId)}`;
-
-// Not paged; admins only.
-export const fetchOverlayAccess = (path: string) =>
-  request<{ overlay_access: OverlayAccess[] }>(path).then((r) => r.overlay_access);
-
-export const overlayAccessApi = {
-  // Replaces the overlay's grant; users and groups come back sorted.
-  grant: (overlayId: string, grant: { everyone: boolean; users: string[]; groups: string[] }) =>
-    request<OverlayAccess>(overlayAccessEntryPath(overlayId), {
-      method: 'PUT',
-      body: JSON.stringify(grant),
-    }),
-  // Leaves the overlay to admins again.
-  revoke: (overlayId: string) =>
-    request<void>(overlayAccessEntryPath(overlayId), { method: 'DELETE' }),
+export const fetchOverlayBounds = async (id: string): Promise<OverlayBounds> => {
+  const b = await tilesJson<TileBounds>(`${mapPath(id)}/bounds`);
+  return {
+    west: b.west,
+    south: b.south,
+    east: b.east,
+    north: b.north,
+    min_zoom: b.minZoom,
+    max_zoom: b.maxZoom,
+  };
 };
+
+// Checks the tile server's /version: null and its version if it answers,
+// else a short reason.
+export async function probeTileServer(
+  signal?: AbortSignal,
+): Promise<{ error: string | null; version: string | null }> {
+  try {
+    const v = (await (await tilesFetch('/version', signal)).json()) as {
+      version?: string;
+      commit?: string;
+    };
+    return { error: null, version: v.version || v.commit?.slice(0, 7) || null };
+  } catch (err) {
+    if (err instanceof TileServerError) {
+      return { error: err.status === 0 ? err.message : `HTTP ${err.status}`, version: null };
+    }
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      return { error: 'no answer', version: null };
+    }
+    return { error: 'unreachable', version: null };
+  }
+}
 
 // The defaults every map starts with, set by admins: the overlays switched on
 // until a map (or /m's Settings) switches them itself. The metadata is absent

@@ -26,6 +26,10 @@ export const apiTarget = () => target;
 // (mtls). Empty: no suggestions.
 const addressBaseUrls: Record<ApiTarget, string> = { oidc: '', mtls: '' };
 
+// The tile server (tileserve-go), whose maps the map widgets draw as
+// overlays: the SPA loads them itself, like address-serv. Empty: no overlays.
+const tilesBaseUrls: Record<ApiTarget, string> = { oidc: '', mtls: '' };
+
 type RuntimeConfig = {
   // Origin of universalGoApi for OIDC login. Empty or missing: keep
   // VITE_API_BASE_URL.
@@ -38,6 +42,12 @@ type RuntimeConfig = {
   // address-serv behind the mTLS proxy, for client certificate sessions.
   // Empty or missing: addressBaseUrl.
   mtlsAddressBaseUrl?: string;
+  // The tile server's origin for OIDC sessions. Empty or missing: no map
+  // overlays.
+  tilesBaseUrl?: string;
+  // The tile server behind the mTLS proxy, for client certificate sessions.
+  // Empty or missing: tilesBaseUrl.
+  mtlsTilesBaseUrl?: string;
 };
 
 // config.json is mounted into the container at runtime, so one image can
@@ -54,6 +64,7 @@ export async function loadConfig(): Promise<void> {
     }
     baseUrls.mtls = config.mtlsApiBaseUrl ? trimSlashes(config.mtlsApiBaseUrl) : baseUrls.oidc;
     setAddressBaseUrls(config.addressBaseUrl, config.mtlsAddressBaseUrl);
+    setTilesBaseUrls(config.tilesBaseUrl, config.mtlsTilesBaseUrl);
   } catch (err) {
     console.warn('config.json not loaded, using the build-time API URL', err);
   }
@@ -71,6 +82,19 @@ export function setAddressBaseUrls(oidc?: string, mtls?: string) {
 // configured.
 export function addressUrl(path: string, t: ApiTarget = target): string | null {
   const base = addressBaseUrls[t];
+  return base === '' ? null : `${base}${path}`;
+}
+
+// Exported for tests; loadConfig sets them from config.json.
+export function setTilesBaseUrls(oidc?: string, mtls?: string) {
+  tilesBaseUrls.oidc = oidc ? trimSlashes(oidc) : '';
+  tilesBaseUrls.mtls = mtls ? trimSlashes(mtls) : tilesBaseUrls.oidc;
+}
+
+// The tile server URL of path for the session's target, null when none is
+// configured.
+export function tilesUrl(path: string, t: ApiTarget = target): string | null {
+  const base = tilesBaseUrls[t];
   return base === '' ? null : `${base}${path}`;
 }
 

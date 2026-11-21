@@ -38,7 +38,6 @@ const MapAdminWidget = lazy(() => import('./MapAdmin/MapAdmin.tsx'));
 const MessageSettingsWidget = lazy(() => import('./MessageSettings/MessageSettings.tsx'));
 const MessageTagsWidget = lazy(() => import('./MessageTags/MessageTags.tsx'));
 const TransmissionWaysWidget = lazy(() => import('./TransmissionWays/TransmissionWays.tsx'));
-const OverlayAccessWidget = lazy(() => import('./OverlayAccess/OverlayAccess.tsx'));
 const LayoutsWidget = lazy(() => import('./Layouts/Layouts.tsx'));
 const ExportTemplatesWidget = lazy(() => import('./ExportTemplates/ExportTemplates.tsx'));
 const WorkflowsWidget = lazy(() => import('./Workflows/Workflows.tsx'));
@@ -902,18 +901,6 @@ const MessageTags: Widget = {
   Component: MessageTagsWidget,
 };
 
-// Which users and groups see each tile server overlay.
-const OverlayAccess: Widget = {
-  ...adminWidget,
-  adminOnly: false,
-  permission: 'overlays.manage',
-  id: 'OverlayAccess',
-  name: 'Overlay access',
-  description: 'Restricts map overlays to some users and groups.',
-  defaultWidth: 70,
-  Component: OverlayAccessWidget,
-};
-
 // Every user's dashboard layouts: rename, share with everyone or make
 // personal, export, delete.
 const Layouts: Widget = {
@@ -1033,7 +1020,6 @@ export const widgets: Record<string, Widget> = Object.fromEntries(
     MessageSettings,
     MessageTags,
     TransmissionWays,
-    OverlayAccess,
     ExportTemplates,
     Workflows,
     BackupInstances,

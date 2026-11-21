@@ -75,16 +75,19 @@ export default defineConfig({
             // is cached by the app, per user), address-serv (/api/ too, and
             // its health check, which must reach it) and the identity
             // provider.
-            // Overlay tiles are the API's, behind the token; the cache is
-            // deleted on logout and on a 401 (offlineStore.ts mapTilesCache).
+            // The tile server's overlay tiles and bounds count too (behind
+            // the token; the cache is deleted on logout and on a 401,
+            // offlineStore.ts mapTilesCache), but not its map list, which
+            // the app keeps per user, nor /version, its health check.
             urlPattern: ({ sameOrigin, url }) =>
-              url.pathname.startsWith('/api/v1/overlays/') ||
-              (!sameOrigin &&
-                !url.pathname.startsWith('/api/') &&
-                !url.pathname.startsWith('/auth/') &&
-                url.pathname !== '/healthz' &&
-                !url.pathname.startsWith('/application/') &&
-                !url.pathname.startsWith('/if/')),
+              !sameOrigin &&
+              !url.pathname.startsWith('/api/') &&
+              !url.pathname.startsWith('/auth/') &&
+              url.pathname !== '/healthz' &&
+              url.pathname !== '/version' &&
+              url.pathname !== '/maps' &&
+              !url.pathname.startsWith('/application/') &&
+              !url.pathname.startsWith('/if/'),
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'map-tiles',

@@ -8,13 +8,14 @@ import {
 } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { apiUrl, authHeaders } from '@/api/client';
+import { apiTarget, authHeaders } from '@/api/client';
 import type { Coordinates } from '@/api/missions';
 import {
   fetchOverlayBounds,
+  isTileServerUrl,
   type Overlay,
   type OverlayBounds,
-  overlayTilePath,
+  overlayTileUrl,
   resolveMapStyle,
   useMapStyles,
   useDefaultOverlayStates,
@@ -49,16 +50,15 @@ const defaultSelectionZoom = 15;
 // As long as Android waits before its context menu.
 const longPressMs = 500;
 
-// MapLibre loads tiles itself, so it needs absolute URLs.
-const absolute = (url: string) => new URL(url, window.location.href).href;
-
-// The overlay tiles come from the API, which needs the token (or the client
-// certificate, hence credentials). Nothing else gets them: the styles and
-// basemap tiles are other origins.
-const transformRequest: RequestTransformFunction = (url) =>
-  url.startsWith(absolute(apiUrl('/api/v1/overlays/')))
-    ? { url, headers: authHeaders(), credentials: 'include' }
-    : { url };
+// The overlay tiles come from the tile server, which needs the user's token,
+// or behind the mTLS proxy the client certificate (hence credentials). Nothing
+// else gets them: the styles and basemap tiles are other origins.
+const transformRequest: RequestTransformFunction = (url) => {
+  if (!isTileServerUrl(url)) return { url };
+  if (apiTarget() === 'mtls') return { url, credentials: 'include' };
+  // MapLibre's default credentials (same-origin) send no cookies there.
+  return { url, headers: authHeaders() };
+};
 
 // The markers are DOM elements built outside React, which need every class
 // as a string; these are in Map.module.scss.
@@ -160,11 +160,12 @@ function applyOverlays(
   for (const [id, s] of Object.entries(state)) {
     const key = overlaySourceId(id);
     const b = bounds[id];
-    if (s.on && b) {
+    const tiles = overlayTileUrl(id);
+    if (s.on && b && tiles !== null) {
       if (!m.getSource(key)) {
         m.addSource(key, {
           type: 'raster',
-          tiles: [apiUrl(overlayTilePath(id))],
+          tiles: [tiles],
           tileSize: 256,
           bounds: [b.west, b.south, b.east, b.north],
           minzoom: b.min_zoom,
