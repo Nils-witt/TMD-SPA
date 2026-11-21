@@ -19,12 +19,25 @@ export function setApiTarget(t: ApiTarget) {
   target = t;
 }
 
+export const apiTarget = () => target;
+
+// address-serv, which the SPA calls itself for address suggestions: with the
+// user's token (oidc), or through the mTLS proxy with the client certificate
+// (mtls). Empty: no suggestions.
+const addressBaseUrls: Record<ApiTarget, string> = { oidc: '', mtls: '' };
+
 type RuntimeConfig = {
   // Origin of universalGoApi for OIDC login. Empty or missing: keep
   // VITE_API_BASE_URL.
   apiBaseUrl?: string;
   // Origin that requires a client certificate. Empty or missing: apiBaseUrl.
   mtlsApiBaseUrl?: string;
+  // address-serv's origin for OIDC sessions. Empty or missing: no address
+  // suggestions.
+  addressBaseUrl?: string;
+  // address-serv behind the mTLS proxy, for client certificate sessions.
+  // Empty or missing: addressBaseUrl.
+  mtlsAddressBaseUrl?: string;
 };
 
 // config.json is mounted into the container at runtime, so one image can
@@ -40,12 +53,26 @@ export async function loadConfig(): Promise<void> {
       baseUrls.oidc = trimSlashes(config.apiBaseUrl);
     }
     baseUrls.mtls = config.mtlsApiBaseUrl ? trimSlashes(config.mtlsApiBaseUrl) : baseUrls.oidc;
+    setAddressBaseUrls(config.addressBaseUrl, config.mtlsAddressBaseUrl);
   } catch (err) {
     console.warn('config.json not loaded, using the build-time API URL', err);
   }
 }
 
 export const apiUrl = (path: string, t: ApiTarget = target) => `${baseUrls[t]}${path}`;
+
+// Exported for tests; loadConfig sets them from config.json.
+export function setAddressBaseUrls(oidc?: string, mtls?: string) {
+  addressBaseUrls.oidc = oidc ? trimSlashes(oidc) : '';
+  addressBaseUrls.mtls = mtls ? trimSlashes(mtls) : addressBaseUrls.oidc;
+}
+
+// The address-serv URL of path for the session's target, null when none is
+// configured.
+export function addressUrl(path: string, t: ApiTarget = target): string | null {
+  const base = addressBaseUrls[t];
+  return base === '' ? null : `${base}${path}`;
+}
 
 // The API URL is empty when the SPA and the API share an origin.
 export function websocketUrl(path: string): string {
@@ -115,6 +142,12 @@ export function accessTokenRenewed() {
 export function authHeaders(): Record<string, string> {
   const token = accessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// authHeaders, after renewing an expired token as request() does.
+export async function freshAuthHeaders(): Promise<Record<string, string>> {
+  await refreshToken();
+  return authHeaders();
 }
 
 export class ApiError extends Error {

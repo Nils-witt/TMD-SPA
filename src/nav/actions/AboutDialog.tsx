@@ -58,7 +58,8 @@ const when = (iso: string) => (iso ? new Date(iso).toLocaleString() : '');
 const short = (commit: string) => commit.slice(0, 7);
 
 // The frontend's build, the API's and those of the services the API is
-// connected to, as the API last read them. The backup instances' come from
+// connected to, as the API last read them (the address directory tells
+// none). The backup instances' come from
 // the shared backup status (polled by its indicator), so none is polled here.
 function Versions() {
   const api = useApiVersion().data;

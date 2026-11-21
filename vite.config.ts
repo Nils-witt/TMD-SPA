@@ -72,7 +72,9 @@ export default defineConfig({
           {
             // Map styles come from any https host an admin configured, so
             // everything of other origins counts, except the API (its data
-            // is cached by the app, per user) and the identity provider.
+            // is cached by the app, per user), address-serv (/api/ too, and
+            // its health check, which must reach it) and the identity
+            // provider.
             // Overlay tiles are the API's, behind the token; the cache is
             // deleted on logout and on a 401 (offlineStore.ts mapTilesCache).
             urlPattern: ({ sameOrigin, url }) =>
@@ -80,6 +82,7 @@ export default defineConfig({
               (!sameOrigin &&
                 !url.pathname.startsWith('/api/') &&
                 !url.pathname.startsWith('/auth/') &&
+                url.pathname !== '/healthz' &&
                 !url.pathname.startsWith('/application/') &&
                 !url.pathname.startsWith('/if/')),
             handler: 'StaleWhileRevalidate',

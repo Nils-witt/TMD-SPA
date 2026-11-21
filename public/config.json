@@ -1,4 +1,6 @@
 {
   "apiBaseUrl": "",
-  "mtlsApiBaseUrl": ""
+  "mtlsApiBaseUrl": "",
+  "addressBaseUrl": "",
+  "mtlsAddressBaseUrl": ""
 }

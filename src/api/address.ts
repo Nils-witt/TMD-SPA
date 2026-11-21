@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ApiError, request } from './client';
+import { addressUrl, apiTarget, freshAuthHeaders } from './client';
 import type { Coordinates, MissionFields } from './missions';
 
-// Suggestions come from the API's address directory, if it has one, and only
-// help: every address field stays free text.
+// Suggestions come from address-serv, which the browser calls itself (its
+// URLs are addressBaseUrl and mtlsAddressBaseUrl of config.json), and only
+// help: every address field stays free text. Its failures never make the app
+// count as offline: the API is what the app needs.
 
 type StreetSuggestion = {
   name: string;
@@ -63,21 +65,83 @@ const none: AddressSuggestions = {
 
 const debounceMs = 250;
 
-// Turns false once the API answers 404 (no address directory), so no more
-// lookups are tried until the page reloads.
+// A suggestion arriving later than this is of no use while typing.
+const addressTimeout = 10_000;
+
+// Turns false once address-serv answers 403 (the token may not read
+// addresses) or 404 (no /api/suggest), so no more lookups are tried until the
+// page reloads.
 let available = true;
 
-const addressPath = (kind: string, params: Record<string, string>) => {
+export class AddressError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'AddressError';
+    this.status = status;
+  }
+}
+
+// A GET of address-serv. With OIDC it sends the user's token (address-serv
+// accepts it read-only) and no cookies; behind the mTLS proxy it sends the
+// client certificate, which a browser only presents cross-origin with
+// credentials. Throws AddressError, or what fetch throws.
+export async function addressRequest<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return (await (await addressFetch(path, signal)).json()) as T;
+}
+
+async function addressFetch(path: string, signal?: AbortSignal): Promise<Response> {
+  const url = addressUrl(path);
+  if (url === null) throw new AddressError(0, 'no address directory configured');
+  const mtls = apiTarget() === 'mtls';
+  const timeout = AbortSignal.timeout(addressTimeout);
+  const res = await fetch(url, {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    credentials: mtls ? 'include' : 'omit',
+    headers: { Accept: 'application/json', ...(mtls ? {} : await freshAuthHeaders()) },
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new AddressError(res.status, body?.error ?? `address directory answered ${res.status}`);
+  }
+  return res;
+}
+
+// Checks GET /healthz, which needs the token too: null if address-serv
+// answers, else a short reason.
+export async function probeAddressDirectory(signal?: AbortSignal): Promise<string | null> {
+  try {
+    await (await addressFetch('/healthz', signal)).body?.cancel();
+    return null;
+  } catch (err) {
+    if (err instanceof AddressError) return err.status === 0 ? err.message : `HTTP ${err.status}`;
+    if (err instanceof DOMException && err.name === 'TimeoutError') return 'no answer';
+    return 'unreachable';
+  }
+}
+
+// Whether lookups are worth trying: an address directory is configured and
+// has not refused them.
+export const addressLookupsAvailable = () => available && addressUrl('') !== null;
+
+const noteFailure = (err: unknown) => {
+  if (err instanceof AddressError && (err.status === 403 || err.status === 404)) {
+    available = false;
+  }
+};
+
+export const addressPath = (kind: string, params: Record<string, string>) => {
   const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v.trim() !== ''));
-  return `/api/v1/address/${kind}?${q}`;
+  return `/api/suggest/${kind}?${q}`;
 };
 
 // Suggestions are optional, so failures are ignored.
 async function lookup<T>(path: string, params: Record<string, string>, signal: AbortSignal) {
   try {
-    return await request<T[]>(addressPath(path, params), { signal });
+    return await addressRequest<T[]>(addressPath(path, params), signal);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 404) available = false;
+    noteFailure(err);
     return [] as T[];
   }
 }
@@ -99,7 +163,7 @@ function useLookup<T>(path: string, params: Record<string, string> | null): T[] 
   const [state, setState] = useState<{ key: string | null; items: T[] }>({ key: null, items: [] });
 
   useEffect(() => {
-    if (debounced === null || !available) return;
+    if (debounced === null || !addressLookupsAvailable()) return;
     const ctl = new AbortController();
     lookup<T>(path, JSON.parse(debounced) as Record<string, string>, ctl.signal).then(
       (items) => setState({ key: debounced, items }),
@@ -181,12 +245,12 @@ const maxAddressDistance = 50;
 const maxObjectDistance = 25;
 
 async function reverse(p: Coordinates, limit: number, signal?: AbortSignal) {
-  if (!available) return null;
+  if (!addressLookupsAvailable()) return null;
   try {
     const q = new URLSearchParams({ lat: String(p.lat), lon: String(p.lon), limit: String(limit) });
-    return await request<ReverseResult>(`/api/v1/address/reverse?${q}`, { signal });
+    return await addressRequest<ReverseResult>(`/api/suggest/reverse?${q}`, signal);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 404) available = false;
+    noteFailure(err);
     return null;
   }
 }

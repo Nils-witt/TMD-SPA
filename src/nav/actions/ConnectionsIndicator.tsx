@@ -27,10 +27,10 @@ const levelTitle: Record<ConnectionsLevel, string> = {
   failed: 'Servers disconnected',
 };
 
-// The API's connections to the units server, tile server, address directory
-// and Gotenberg. Hidden while the API configures none (or an older API has no
-// /api/v1/connections). The states are the API's: the browser never talks to
-// these servers itself.
+// The API's connections to the units server, tile server and Gotenberg, and
+// the browser's own to the address directory (address-serv, which it calls
+// itself). Hidden while there are none (or an older API has no
+// /api/v1/connections and no address directory is configured).
 function ConnectionsIndicator() {
   const { data, reload } = useConnections();
   const { live } = useLive();
