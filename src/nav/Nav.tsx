@@ -141,7 +141,7 @@ function Nav() {
               )}
               <ViewMenu />
               <TopLevelMenu label="Help">
-                <NavMenuItem label="Source Code" href="https://github.com/Nils-witt/TDM-Frontend" />
+                <NavMenuItem label="Source Code" href="https://github.com/Nils-witt/TMD-SPA" />
               </TopLevelMenu>
             </nav>
             <div className={styles.right}>
