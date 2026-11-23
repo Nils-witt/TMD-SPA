@@ -103,6 +103,8 @@ function Nav() {
                 <NavMenuItem label="New Entry" widget="LogbookForm" shortcut="newLogEntry" />
                 <NavMenuItem label="Logbook" widget="Logbook" />
                 <NavMenuItem label="Files" widget="FileList" />
+                <MenuSeparator />
+                <NavMenuItem label="Tasks" widget="Tasks" />
               </TopLevelMenu>
               {messages && (
                 <TopLevelMenu label="Messages">

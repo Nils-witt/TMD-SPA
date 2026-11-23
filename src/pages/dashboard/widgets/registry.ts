@@ -45,6 +45,7 @@ const WorkflowsWidget = lazy(() => import('./Workflows/Workflows.tsx'));
 const BackupStatusWidget = lazy(() => import('./BackupStatus/BackupStatus.tsx'));
 const UnitStatusWidget = lazy(() => import('./UnitStatus/UnitStatus.tsx'));
 const MissionUnitsWidget = lazy(() => import('./MissionUnits/MissionUnits.tsx'));
+const TasksWidget = lazy(() => import('./Tasks/Tasks.tsx'));
 const AddUnitWidget = lazy(() => import('./AddUnit/AddUnit.tsx'));
 const UnitRequestsWidget = lazy(() => import('./UnitRequests/UnitRequests.tsx'));
 const UnitScopesWidget = lazy(() => import('./UnitScopes/UnitScopes.tsx'));
@@ -466,6 +467,23 @@ const MissionUnits: Widget = {
   defaultHeight: 25,
   options: [unitFunctionOption],
   Component: MissionUnitsWidget,
+};
+
+const Tasks: Widget = {
+  id: 'Tasks',
+  name: 'Tasks',
+  category: 'missions',
+  permission: 'missions.view',
+  description:
+    'The tasks of the selected mission: create, edit, mark done and archive them; execute the actions of action tasks.',
+  consumes: ['selection'],
+  minWidth: 20,
+  maxWidth: 120,
+  minHeight: 8,
+  maxHeight: 800,
+  defaultWidth: 30,
+  defaultHeight: 25,
+  Component: TasksWidget,
 };
 
 // Patients need their own permissions; the API keeps them online only.
@@ -1047,6 +1065,7 @@ export const widgets: Record<string, Widget> = Object.fromEntries(
     UnitRequests,
     UnitScopes,
     MissionUnits,
+    Tasks,
     AddUnit,
     MissionPatients,
     Patient,

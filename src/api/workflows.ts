@@ -39,6 +39,7 @@ export type WorkflowNodeCategory = 'trigger' | 'filter' | 'action';
 
 export type WorkflowParamType =
   | 'text'
+  | 'multiline'
   | 'template'
   | 'bool'
   | 'value'

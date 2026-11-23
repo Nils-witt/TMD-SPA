@@ -222,6 +222,16 @@ function ParamField({
           onChange={(v) => onChange(v === '' && !spec.required ? undefined : v)}
         />,
       );
+    case 'multiline':
+      return row(
+        <textarea
+          id={id}
+          className="grow"
+          rows={3}
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+        />,
+      );
     default:
       return row(
         <input
