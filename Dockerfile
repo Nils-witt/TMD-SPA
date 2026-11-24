@@ -19,4 +19,6 @@ FROM nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY nginx-headers.conf /etc/nginx/snippets/headers.conf
 COPY --from=build /src/dist /usr/share/nginx/html
+# Writes config.json from API_BASE_URL etc. on start (see the script).
+COPY --chmod=755 docker-entrypoint.d/40-config-json.sh /docker-entrypoint.d/
 EXPOSE 80

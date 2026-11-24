@@ -87,6 +87,14 @@ jobs:
           asset=$(curl -fs http://localhost:8080/ | grep -oE '/assets/index-[^"]+\.js' | head -1)
           curl -fsI -H 'Accept-Encoding: gzip' "http://localhost:8080$asset" | grep -qi '^content-encoding: gzip'
           curl -fsI http://localhost:8080/sw.js | grep -qi '^cache-control: no-cache'
+          # config.json is written from the environment, which survives a
+          # recreated container (Watchtower).
+          docker run -d --name smoke-env -p 8081:80 -e API_BASE_URL=https://api.example.com -e TILES_BASE_URL=https://tiles.example.com universam-frontend:smoke
+          for i in $(seq 1 20); do curl -fs http://localhost:8081/ >/dev/null && break; sleep 0.5; done
+          config=$(curl -fs http://localhost:8081/config.json)
+          echo "$config" | grep -q '"apiBaseUrl": "https://api.example.com"'
+          echo "$config" | grep -q '"tilesBaseUrl": "https://tiles.example.com"'
+          echo "$config" | python3 -m json.tool >/dev/null
 
       # The build stage runs on $BUILDPLATFORM, so the second platform only
       # adds the nginx layer; the SPA is built once.
